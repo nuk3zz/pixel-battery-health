@@ -4,7 +4,10 @@ Pixel Battery Health is an offline Android app for checking battery health from 
 
 It imports a Pixel bugreport ZIP, finds the correct report text automatically, extracts battery data, and shows a clean battery health summary.
 
-![Pixel Battery Health app screenshot](docs/images/app-screenshot.svg)
+<p>
+  <img src="docs/images/ready-screen.jpg" alt="Pixel Battery Health ready screen" width="300" />
+  <img src="docs/images/waiting-screen.jpg" alt="Pixel Battery Health waiting for bugreport screen" width="300" />
+</p>
 
 ## Features
 
