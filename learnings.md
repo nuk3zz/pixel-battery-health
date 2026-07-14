@@ -1,5 +1,10 @@
 # Learnings
 
+## 2026-07-15 - Supported Model Documentation
+
+- Public documentation should describe the complete supported Pixel range rather than highlighting the model used for a particular regression test.
+- The current built-in catalog covers the original Pixel through the Pixel 10 series, including supported XL, `a`, Pro, and Fold variants.
+
 ## 2026-07-14 - Pixel 9 Finalization
 
 - The project already recognized Pixel 9 by `Pixel 9` and `tokay`, using the correct 4,700 mAh typical capacity.

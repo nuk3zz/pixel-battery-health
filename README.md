@@ -50,6 +50,6 @@ Bugreports can contain sensitive device logs. Only open bugreports you trust, an
 
 ## Supported Pixel Models
 
-The app includes Pixel design capacities and device codenames from the original Pixel through the current supported range. Pixel 9 is explicitly recognized as `Pixel 9` or `tokay` and uses Google's 4,700 mAh typical capacity. If the model cannot be detected, the app still shows parsed battery values but may not calculate a percentage.
+The app supports the Pixel family from the original Pixel through the Pixel 10 series, including supported XL, `a`, Pro, and Fold variants. It identifies each model from bugreport properties and device codenames, then uses that model's typical design capacity for the health calculation. If the model cannot be detected, the app still shows parsed battery values but may not calculate a percentage.
 
 The percentage uses the estimated real capacity reported by Android divided by the model's typical design capacity. Android's ASOC value is only used as a fallback when the capacity calculation is unavailable. Because measured capacity can exceed the manufacturer's typical rating, the displayed health percentage is capped at 100% while the measured mAh value remains visible.

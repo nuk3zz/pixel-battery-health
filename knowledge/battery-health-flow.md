@@ -17,9 +17,9 @@ Model evidence is ranked in this order:
 
 Lower-ranked evidence cannot overwrite a model already identified by a stronger source.
 
-Longer aliases are checked first so `Pixel 9 Pro XL` cannot be reduced to `Pixel 9`.
+Longer aliases are checked first so a Pro, XL, or Fold variant cannot be reduced to its shorter base-model name.
 
-Pixel 9 is recognized by the display name `Pixel 9` and codename `tokay`. Its Google-listed typical design capacity is 4,700 mAh.
+The built-in model catalog covers the original Pixel through the Pixel 10 series, including supported XL, `a`, Pro, and Fold variants. Each entry maps model names and device codenames to the model's typical design capacity.
 
 ## Percentage Calculation
 
