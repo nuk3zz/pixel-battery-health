@@ -49,6 +49,59 @@ class BatteryBugreportParserTest {
     }
 
     @Test
+    fun calculatesPixel9HealthFromEstimatedCapacity() {
+        val report = parser.parse(
+            text = """
+                [ro.product.model]: [Pixel 9]
+                [ro.product.device]: [tokay]
+                Estimated battery capacity: 4,230.0 mAh
+                mSavedBatteryAsoc=77
+            """.trimIndent(),
+        )
+
+        assertEquals(PixelModel.Pixel9, report.pixelModel)
+        assertEquals(4700, report.designCapacityMah)
+        assertEquals(4230, report.estimatedCapacityMah)
+        assertEquals(90.0, report.healthPercent!!, 0.01)
+    }
+
+    @Test
+    fun detectsPixel9FromBuildFingerprintAndZipName() {
+        val fingerprintReport = parser.parse(
+            text = "[ro.build.fingerprint]: [google/tokay/tokay:15/AP4A.250205.002/1234567:user/release-keys]",
+        )
+        val filenameReport = parser.parse(
+            text = "Estimated battery capacity: 4558 mAh",
+            sourceNames = listOf("bugreport-tokay-AP4A.250205.002-2026-07-14.zip"),
+        )
+
+        assertEquals(PixelModel.Pixel9, fingerprintReport.pixelModel)
+        assertEquals(PixelModel.Pixel9, filenameReport.pixelModel)
+    }
+
+    @Test
+    fun contentModelOverridesMisleadingFilename() {
+        val report = parser.parse(
+            text = "[ro.product.model]: [Pixel 9]",
+            sourceNames = listOf("old-pixel-7-pro-notes.zip"),
+        )
+
+        assertEquals(PixelModel.Pixel9, report.pixelModel)
+    }
+
+    @Test
+    fun explicitModelPropertyBeatsLaterFingerprintMention() {
+        val report = parser.parse(
+            text = """
+                [ro.product.model]: [Pixel 9]
+                crash attachment build fingerprint: google/cheetah/cheetah:16/test
+            """.trimIndent(),
+        )
+
+        assertEquals(PixelModel.Pixel9, report.pixelModel)
+    }
+
+    @Test
     fun handlesUnknownModelWithoutGuessingHealthPercent() {
         val report = parser.parse("Estimated battery capacity: 4200 mAh")
 
@@ -69,5 +122,42 @@ class BatteryBugreportParserTest {
         )
         
         assertEquals(PixelModel.Pixel7, report.pixelModel)
+    }
+
+    @Test
+    fun readsStateOnlyFromBatteryServiceAndDoesNotGuessCycles() {
+        val report = parser.parse(
+            text = """
+                DUMP OF SERVICE thermalservice:
+                  temperature: 810
+                  voltage: 9999
+                mSavedBatteryUsage=785
+                DUMP OF SERVICE battery:
+                Current Battery Service state:
+                  health: 2
+                  voltage: 4012
+                  temperature: 287
+            """.trimIndent(),
+        )
+
+        assertNull(report.cycleCount)
+        assertEquals(AndroidBatteryHealth.Good, report.androidHealth)
+        assertEquals(28.7, report.temperatureCelsius!!, 0.01)
+        assertEquals("4012 mV", report.voltageText)
+    }
+
+    @Test
+    fun ignoresInvalidCapacityAndAsocValues() {
+        val report = parser.parse(
+            text = """
+                Product: tokay
+                Estimated battery capacity: 47000 mAh
+                mSavedBatteryAsoc=-1
+            """.trimIndent(),
+        )
+
+        assertNull(report.estimatedCapacityMah)
+        assertNull(report.batteryAsoc)
+        assertNull(report.healthPercent)
     }
 }

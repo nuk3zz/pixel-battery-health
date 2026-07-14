@@ -18,23 +18,26 @@ class BugreportTextFinder {
     }
 
     private fun score(file: File): Int {
-        val markers = listOf(
-            "Estimated battery capacity",
-            "android.os.extra.CYCLE_COUNT",
-            "BUGREPORT",
+        val markers = mapOf(
+            "Estimated battery capacity" to 8,
+            "android.os.extra.CYCLE_COUNT" to 6,
+            "Current Battery Service state" to 4,
+            "DUMP OF SERVICE batterystats" to 4,
+            "BUGREPORT" to 2,
         )
 
         return runCatching {
             file.bufferedReader().useLines { lines ->
                 var score = 0
                 val found = mutableSetOf<String>()
-                lines.take(2_000).forEach { line ->
-                    markers.forEach { marker ->
+                for (line in lines) {
+                    markers.forEach { (marker, weight) ->
                         if (marker !in found && line.contains(marker, ignoreCase = true)) {
                             found += marker
-                            score += 1
+                            score += weight
                         }
                     }
+                    if (found.size == markers.size) break
                 }
                 score
             }

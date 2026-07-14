@@ -13,15 +13,14 @@ data class BatteryReport(
     val parsedDesignCapacityMah: Int? = null,
     val batteryAsoc: Int? = null,
 ) {
-    // Prefer the hardcoded design capacity for known Pixel models, 
-    // fallback to the one parsed from the bugreport if the model is unknown.
+    // Known model data is stable and avoids unrelated capacity values in verbose logs.
     val designCapacityMah: Int? = pixelModel?.designCapacityMah ?: parsedDesignCapacityMah
 
     val healthPercent: Double? =
-        if (batteryAsoc != null) {
-            batteryAsoc.toDouble()
-        } else if (estimatedCapacityMah != null && designCapacityMah != null) {
+        if (estimatedCapacityMah != null && designCapacityMah != null) {
             estimatedCapacityMah.toDouble() / designCapacityMah.toDouble() * 100.0
+        } else if (batteryAsoc != null) {
+            batteryAsoc.toDouble()
         } else {
             null
         }
