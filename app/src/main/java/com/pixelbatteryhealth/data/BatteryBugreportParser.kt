@@ -8,13 +8,23 @@ import kotlin.math.roundToInt
 class BatteryBugreportParser(
     private val modelDetector: PixelModelDetector = PixelModelDetector(),
 ) {
-    fun parse(file: File, sourceNames: List<String> = emptyList()): BatteryReport =
-        file.useLines { lines -> parse(lines, sourceNames) }
+    fun parse(
+        file: File,
+        sourceNames: List<String> = emptyList(),
+        checkCancelled: () -> Unit = {},
+    ): BatteryReport = file.useLines { lines -> parse(lines, sourceNames, checkCancelled) }
 
-    fun parse(text: String, sourceNames: List<String> = emptyList()): BatteryReport =
-        parse(text.lineSequence(), sourceNames)
+    fun parse(
+        text: String,
+        sourceNames: List<String> = emptyList(),
+        checkCancelled: () -> Unit = {},
+    ): BatteryReport = parse(text.lineSequence(), sourceNames, checkCancelled)
 
-    fun parse(lines: Sequence<String>, sourceNames: List<String> = emptyList()): BatteryReport {
+    fun parse(
+        lines: Sequence<String>,
+        sourceNames: List<String> = emptyList(),
+        checkCancelled: () -> Unit = {},
+    ): BatteryReport {
         var estimatedCapacityMah: Int? = null
         var lastLearnedCapacityMah: Int? = null
         var minLearnedCapacityMah: Int? = null
@@ -57,6 +67,7 @@ class BatteryBugreportParser(
         }
 
         for (line in lines) {
+            checkCancelled()
             if (line.contains("Current Battery Service state:", ignoreCase = true) ||
                 line.contains("DUMP OF SERVICE battery:", ignoreCase = true)
             ) {

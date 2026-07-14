@@ -15,6 +15,7 @@ It imports a Pixel bugreport ZIP, finds the correct report text automatically, e
 - Receive bugreport ZIPs directly from the Android share sheet
 - Guided flow for opening Developer Options and creating a new bugreport
 - Automatic ZIP extraction and bugreport text detection
+- Stage-by-stage import progress, cancellation, and timeout errors
 - Battery health percentage calculated from estimated capacity and Pixel design capacity
 - Estimated capacity, design capacity, cycle count, health status, temperature, and voltage
 - Dark mode support
@@ -51,4 +52,4 @@ Bugreports can contain sensitive device logs. Only open bugreports you trust, an
 
 The app includes Pixel design capacities and device codenames from the original Pixel through the current supported range. Pixel 9 is explicitly recognized as `Pixel 9` or `tokay` and uses Google's 4,700 mAh typical capacity. If the model cannot be detected, the app still shows parsed battery values but may not calculate a percentage.
 
-The percentage uses the estimated real capacity reported by Android divided by the model's typical design capacity. Android's ASOC value is only used as a fallback when the capacity calculation is unavailable.
+The percentage uses the estimated real capacity reported by Android divided by the model's typical design capacity. Android's ASOC value is only used as a fallback when the capacity calculation is unavailable. Because measured capacity can exceed the manufacturer's typical rating, the displayed health percentage is capped at 100% while the measured mAh value remains visible.

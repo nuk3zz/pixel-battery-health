@@ -66,6 +66,23 @@ class BatteryBugreportParserTest {
     }
 
     @Test
+    fun capsCapacityAboveTypicalRatingAtOneHundredPercent() {
+        val report = parser.parse(
+            text = """
+                [ro.product.model]: [Pixel 9]
+                Estimated battery capacity: 4877 mAh
+                Last learned battery capacity: 4877 mAh
+            """.trimIndent(),
+        )
+
+        assertEquals(4877, report.estimatedCapacityMah)
+        assertEquals(4700, report.designCapacityMah)
+        assertEquals(100.0, report.healthPercent!!, 0.01)
+        assertEquals(true, report.exceedsTypicalCapacity)
+        assertEquals(BatterySummaryStatus.Excellent, report.summaryStatus)
+    }
+
+    @Test
     fun detectsPixel9FromBuildFingerprintAndZipName() {
         val fingerprintReport = parser.parse(
             text = "[ro.build.fingerprint]: [google/tokay/tokay:15/AP4A.250205.002/1234567:user/release-keys]",
@@ -159,5 +176,13 @@ class BatteryBugreportParserTest {
         assertNull(report.estimatedCapacityMah)
         assertNull(report.batteryAsoc)
         assertNull(report.healthPercent)
+    }
+
+    @Test(expected = kotlinx.coroutines.CancellationException::class)
+    fun parsingDoesNotSwallowCancellation() {
+        parser.parse(
+            text = "Estimated battery capacity: 4877 mAh",
+            checkCancelled = { throw kotlinx.coroutines.CancellationException("cancelled") },
+        )
     }
 }

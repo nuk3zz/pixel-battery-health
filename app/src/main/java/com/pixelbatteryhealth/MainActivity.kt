@@ -65,10 +65,13 @@ import com.pixelbatteryhealth.data.BugreportZipExtractor
 import com.pixelbatteryhealth.domain.BatteryReport
 import com.pixelbatteryhealth.domain.BatterySummaryStatus
 import com.pixelbatteryhealth.domain.ImportBugreportUseCase
+import com.pixelbatteryhealth.domain.ImportProgress
+import com.pixelbatteryhealth.domain.ImportStage
 import com.pixelbatteryhealth.presentation.BatteryHealthUiState
 import com.pixelbatteryhealth.presentation.BatteryHealthViewModel
 import com.pixelbatteryhealth.ui.theme.PixelBatteryHealthTheme
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,6 +108,7 @@ class MainActivity : ComponentActivity() {
                         openDeveloperOptions()
                     },
                     onCancelWaiting = vm::stopWaitingForBugreport,
+                    onCancelImport = vm::cancelImport,
                 )
             }
         }
@@ -129,6 +133,7 @@ private fun PixelBatteryHealthApp(
     onImport: (Uri) -> Unit,
     onStartBugreport: () -> Unit,
     onCancelWaiting: () -> Unit,
+    onCancelImport: () -> Unit,
 ) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onImport(uri)
@@ -153,15 +158,24 @@ private fun PixelBatteryHealthApp(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AnimatedContent(targetState = state, label = "content") { contentState ->
-                when {
-                    contentState.isLoading -> LoadingState()
-                    contentState.isWaitingForBugreport -> WaitingForBugreportState(
-                        errorMessage = contentState.errorMessage,
+            val screen = when {
+                state.isLoading -> AppScreen.Loading
+                state.isWaitingForBugreport -> AppScreen.Waiting
+                state.report != null -> AppScreen.Report
+                else -> AppScreen.Empty
+            }
+            AnimatedContent(targetState = screen, label = "content") { currentScreen ->
+                when (currentScreen) {
+                    AppScreen.Loading -> LoadingState(
+                        progress = state.importProgress,
+                        onCancel = onCancelImport,
+                    )
+                    AppScreen.Waiting -> WaitingForBugreportState(
+                        errorMessage = state.errorMessage,
                         onCancelWaiting = onCancelWaiting,
                     )
-                    contentState.report != null -> ReportContent(contentState.report)
-                    else -> EmptyState(contentState.errorMessage)
+                    AppScreen.Report -> state.report?.let { ReportContent(it) }
+                    AppScreen.Empty -> EmptyState(state.errorMessage)
                 }
             }
 
@@ -171,6 +185,7 @@ private fun PixelBatteryHealthApp(
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
+                enabled = !state.isLoading,
             ) {
                 Text("Create Bugreport", fontWeight = FontWeight.SemiBold)
             }
@@ -181,6 +196,7 @@ private fun PixelBatteryHealthApp(
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
+                enabled = !state.isLoading,
             ) {
                 Text("Load Bugreport ZIP", fontWeight = FontWeight.SemiBold)
             }
@@ -243,7 +259,12 @@ private fun WaitingForBugreportState(
 }
 
 @Composable
-private fun LoadingState() {
+private fun LoadingState(
+    progress: ImportProgress?,
+    onCancel: () -> Unit,
+) {
+    val currentProgress = progress ?: ImportProgress(ImportStage.Preparing)
+    val fraction = currentProgress.fraction
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -254,9 +275,41 @@ private fun LoadingState() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            CircularProgressIndicator()
-            Text("Extracting bugreport", style = MaterialTheme.typography.titleMedium)
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (fraction != null) {
+                CircularProgressIndicator(progress = { fraction })
+            } else {
+                CircularProgressIndicator()
+            }
+            Text(
+                currentProgress.stage.title(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                currentProgress.stage.description(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (fraction != null) {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "${(fraction * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            Button(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Cancel Import")
+            }
         }
     }
 }
@@ -271,6 +324,20 @@ private fun ReportContent(report: BatteryReport) {
             status = report.summaryStatus,
             percent = report.healthPercent,
         )
+
+        if (report.exceedsTypicalCapacity) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Text(
+                    text = "Measured capacity is above the typical design rating, so battery health is shown as 100%.",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+        }
 
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -296,6 +363,29 @@ private fun ReportContent(report: BatteryReport) {
             )
         }
     }
+}
+
+private enum class AppScreen {
+    Loading,
+    Waiting,
+    Report,
+    Empty,
+}
+
+private fun ImportStage.title(): String = when (this) {
+    ImportStage.Preparing -> "Preparing bugreport"
+    ImportStage.SavingCopy -> "Saving shared ZIP"
+    ImportStage.Extracting -> "Extracting ZIP"
+    ImportStage.FindingText -> "Finding bugreport text"
+    ImportStage.Parsing -> "Parsing battery data"
+}
+
+private fun ImportStage.description(): String = when (this) {
+    ImportStage.Preparing -> "Checking the selected file."
+    ImportStage.SavingCopy -> "Saving the shared bugreport to Downloads."
+    ImportStage.Extracting -> "Unpacking the ZIP into secure app cache."
+    ImportStage.FindingText -> "Scanning extracted text files for battery data."
+    ImportStage.Parsing -> "Reading model, capacity, cycles, and battery state."
 }
 
 @Composable
