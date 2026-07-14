@@ -2,10 +2,12 @@ package com.pixelbatteryhealth.data
 
 import com.pixelbatteryhealth.domain.AndroidBatteryHealth
 import com.pixelbatteryhealth.domain.BatteryReport
-import com.pixelbatteryhealth.domain.PixelModel
 import java.io.File
+import kotlin.math.roundToInt
 
-class BatteryBugreportParser {
+class BatteryBugreportParser(
+    private val modelDetector: PixelModelDetector = PixelModelDetector(),
+) {
     fun parse(file: File, sourceNames: List<String> = emptyList()): BatteryReport =
         file.useLines { lines -> parse(lines, sourceNames) }
 
@@ -21,84 +23,90 @@ class BatteryBugreportParser {
         var cycleCount: Int? = null
         var androidHealth: Int? = null
         var temperatureRaw: Double? = null
+        var fallbackTemperatureRaw: Double? = null
+        var batteryServiceTemperatureRaw: Double? = null
         var voltageRaw: Long? = null
+        var fallbackVoltageRaw: Long? = null
+        var batteryServiceVoltageRaw: Long? = null
         var batteryAsoc: Int? = null
         
-        var headerModel: PixelModel? = null
-        var fallbackModel: PixelModel? = null
+        var modelMatch = modelDetector.detectFromSourceNames(sourceNames)
+        var inBatteryServiceSection = false
 
-        val estimatedRegex = Regex("""Estimated battery capacity\s*:\s*(\d+)\s*mAh""", RegexOption.IGNORE_CASE)
-        val lastLearnedRegex = Regex("""Last learned battery capacity\s*:\s*(\d+)\s*mAh""", RegexOption.IGNORE_CASE)
-        val minLearnedRegex = Regex("""Min learned battery capacity\s*:\s*(\d+)\s*mAh""", RegexOption.IGNORE_CASE)
-        val maxLearnedRegex = Regex("""Max learned battery capacity\s*:\s*(\d+)\s*mAh""", RegexOption.IGNORE_CASE)
-        val designRegex = Regex("""(?:Design\s+capacity|Battery\s+design\s+capacity|original\s+design\s+capacity)\s*[:=]\s*(\d+)(?:\s*mAh)?""", RegexOption.IGNORE_CASE)
-        val cycleCountRegex = Regex("""(?:android\.os\.extra\.CYCLE_COUNT|mSavedBatteryUsage)\s*[:=]\s*(\d+)""", RegexOption.IGNORE_CASE)
-        val asocRegex = Regex("""mSavedBatteryAsoc\s*[:=]\s*(\d+)""", RegexOption.IGNORE_CASE)
-        val healthRegex = Regex("""(?:^|\s)health\s*=\s*(\d+)""")
-        val temperatureRegex = Regex("""(?:Battery\s+temperature|temperature|temp)\s*[:=]\s*(-?\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
-        val voltageRegex = Regex("""(?:Battery\s+voltage|voltage|voltage_now)\s*[:=]\s*(\d+)""", RegexOption.IGNORE_CASE)
+        val capacityNumber = "([0-9][0-9,.]*)"
+        val estimatedRegex = Regex("Estimated battery capacity\\s*:\\s*$capacityNumber\\s*mAh", RegexOption.IGNORE_CASE)
+        val lastLearnedRegex = Regex("Last learned battery capacity\\s*:\\s*$capacityNumber\\s*mAh", RegexOption.IGNORE_CASE)
+        val minLearnedRegex = Regex("Min learned battery capacity\\s*:\\s*$capacityNumber\\s*mAh", RegexOption.IGNORE_CASE)
+        val maxLearnedRegex = Regex("Max learned battery capacity\\s*:\\s*$capacityNumber\\s*mAh", RegexOption.IGNORE_CASE)
+        val designRegex = Regex("(?:Design\\s+capacity|Battery\\s+design\\s+capacity|original\\s+design\\s+capacity)\\s*[:=]\\s*$capacityNumber(?:\\s*mAh)?", RegexOption.IGNORE_CASE)
+        val cycleCountRegex = Regex("(?:android\\.os\\.extra\\.CYCLE_COUNT|batteryCycleCount|cycle[_ ]count)\\s*[:=]\\s*(\\d+)", RegexOption.IGNORE_CASE)
+        val asocRegex = Regex("mSavedBatteryAsoc\\s*[:=]\\s*(-?\\d+)", RegexOption.IGNORE_CASE)
+        val explicitHealthRegex = Regex("(?:android\\.os\\.extra\\.HEALTH|(?:^|\\s)health)\\s*=\\s*(\\d+)", RegexOption.IGNORE_CASE)
+        val batteryHealthRegex = Regex("^\\s*health\\s*:\\s*(\\d+)", RegexOption.IGNORE_CASE)
+        val explicitTemperatureRegex = Regex("(?:android\\.os\\.extra\\.TEMPERATURE|Battery\\s+temperature)\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
+        val batteryTemperatureRegex = Regex("^\\s*temperature\\s*:\\s*(-?\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
+        val explicitVoltageRegex = Regex("(?:android\\.os\\.extra\\.VOLTAGE|Battery\\s+voltage|voltage_now)\\s*[:=]\\s*(\\d+)", RegexOption.IGNORE_CASE)
+        val batteryVoltageRegex = Regex("^\\s*voltage\\s*:\\s*(\\d+)", RegexOption.IGNORE_CASE)
 
-        val aliases = PixelModel.longestAliasesFirst
-        val modelRegexes = aliases.map { (_, alias) ->
-            Regex("""\b${Regex.escape(alias)}\b""", RegexOption.IGNORE_CASE)
+        fun parseCapacity(regex: Regex, line: String): Int? {
+            val value = regex.find(line)?.groupValues?.get(1)
+                ?.replace(",", "")
+                ?.toDoubleOrNull()
+                ?.roundToInt()
+            return value?.takeIf { it in 1_000..10_000 }
         }
 
-        fun detectModel(text: String): PixelModel? {
-            val cleanText = text.replace("[", " ").replace("]", " ")
-            val normalized = cleanText.replace('_', ' ').replace('-', ' ')
-            for (i in modelRegexes.indices) {
-                if (modelRegexes[i].containsMatchIn(normalized)) {
-                    return aliases[i].first
-                }
-            }
-            return null
-        }
-
-        // Detection from source names
-        for (name in sourceNames) {
-            headerModel = headerModel ?: detectModel(name)
-        }
-
-        var lineCount = 0
         for (line in lines) {
-            lineCount++
-            estimatedCapacityMah = estimatedCapacityMah ?: estimatedRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            lastLearnedCapacityMah = lastLearnedCapacityMah ?: lastLearnedRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            minLearnedCapacityMah = minLearnedCapacityMah ?: minLearnedRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            maxLearnedCapacityMah = maxLearnedCapacityMah ?: maxLearnedRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            
-            val parsedDesign = designRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            if (parsedDesign != null && parsedDesign > 1000) {
-                designCapacityMah = designCapacityMah ?: parsedDesign
+            if (line.contains("Current Battery Service state:", ignoreCase = true) ||
+                line.contains("DUMP OF SERVICE battery:", ignoreCase = true)
+            ) {
+                inBatteryServiceSection = true
+            } else if (inBatteryServiceSection && line.startsWith("DUMP OF SERVICE ")) {
+                inBatteryServiceSection = false
             }
+
+            estimatedCapacityMah = estimatedCapacityMah ?: parseCapacity(estimatedRegex, line)
+            lastLearnedCapacityMah = lastLearnedCapacityMah ?: parseCapacity(lastLearnedRegex, line)
+            minLearnedCapacityMah = minLearnedCapacityMah ?: parseCapacity(minLearnedRegex, line)
+            maxLearnedCapacityMah = maxLearnedCapacityMah ?: parseCapacity(maxLearnedRegex, line)
+            
+            designCapacityMah = designCapacityMah ?: parseCapacity(designRegex, line)
 
             cycleCount = cycleCount ?: cycleCountRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            androidHealth = androidHealth ?: healthRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-            temperatureRaw = temperatureRaw ?: temperatureRegex.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
-            voltageRaw = voltageRaw ?: voltageRegex.find(line)?.groupValues?.get(1)?.toLongOrNull()
-            batteryAsoc = batteryAsoc ?: asocRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
-
-            val isHeaderLine = line.contains("ro.product.model", ignoreCase = true) || 
-                               line.contains("ro.product.device", ignoreCase = true) ||
-                               line.startsWith("Product:", ignoreCase = true) || 
-                               line.startsWith("Device:", ignoreCase = true) ||
-                               line.startsWith("Model:", ignoreCase = true)
-            
-            if (isHeaderLine) {
-                val detected = detectModel(line)
-                if (detected != null) {
-                    headerModel = detected
+            androidHealth = androidHealth
+                ?: explicitHealthRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                ?: batteryHealthRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                    ?.takeIf { inBatteryServiceSection }
+            temperatureRaw = temperatureRaw
+                ?: explicitTemperatureRegex.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
+            batteryTemperatureRegex.find(line)?.groupValues?.get(1)?.toDoubleOrNull()?.let { value ->
+                if (inBatteryServiceSection) {
+                    batteryServiceTemperatureRaw = batteryServiceTemperatureRaw ?: value
+                } else {
+                    fallbackTemperatureRaw = fallbackTemperatureRaw ?: value
                 }
-            } else if (headerModel == null && lineCount < 2000) {
-                val detected = detectModel(line)
-                if (detected != null) {
-                    fallbackModel = fallbackModel ?: detected
+            }
+            voltageRaw = voltageRaw
+                ?: explicitVoltageRegex.find(line)?.groupValues?.get(1)?.toLongOrNull()
+            batteryVoltageRegex.find(line)?.groupValues?.get(1)?.toLongOrNull()?.let { value ->
+                if (inBatteryServiceSection) {
+                    batteryServiceVoltageRaw = batteryServiceVoltageRaw ?: value
+                } else {
+                    fallbackVoltageRaw = fallbackVoltageRaw ?: value
+                }
+            }
+            batteryAsoc = batteryAsoc ?: asocRegex.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                ?.takeIf { it in 1..100 }
+
+            modelDetector.detectFromBugreportLine(line)?.let { candidate ->
+                if (modelMatch == null || candidate.confidence > modelMatch.confidence) {
+                    modelMatch = candidate
                 }
             }
         }
 
         return BatteryReport(
-            pixelModel = headerModel ?: fallbackModel,
+            pixelModel = modelMatch?.model,
             estimatedCapacityMah = estimatedCapacityMah,
             lastLearnedCapacityMah = lastLearnedCapacityMah,
             minLearnedCapacityMah = minLearnedCapacityMah,
@@ -106,10 +114,10 @@ class BatteryBugreportParser {
             parsedDesignCapacityMah = designCapacityMah,
             cycleCount = cycleCount,
             androidHealth = androidHealth?.let(AndroidBatteryHealth::fromRaw),
-            temperatureCelsius = temperatureRaw?.let { raw ->
+            temperatureCelsius = (temperatureRaw ?: batteryServiceTemperatureRaw ?: fallbackTemperatureRaw)?.let { raw ->
                 if (kotlin.math.abs(raw) > 80.0) raw / 10.0 else raw
             },
-            voltageText = voltageRaw?.let { raw ->
+            voltageText = (voltageRaw ?: batteryServiceVoltageRaw ?: fallbackVoltageRaw)?.let { raw ->
                 when {
                     raw >= 1_000_000L -> "%.2f V".format(raw / 1_000_000.0)
                     raw >= 10_000L -> "%.2f V".format(raw / 1_000.0)

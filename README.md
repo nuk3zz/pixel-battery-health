@@ -15,7 +15,7 @@ It imports a Pixel bugreport ZIP, finds the correct report text automatically, e
 - Receive bugreport ZIPs directly from the Android share sheet
 - Guided flow for opening Developer Options and creating a new bugreport
 - Automatic ZIP extraction and bugreport text detection
-- Battery health percentage based on Pixel design capacity
+- Battery health percentage calculated from estimated capacity and Pixel design capacity
 - Estimated capacity, design capacity, cycle count, health status, temperature, and voltage
 - Dark mode support
 - Fully offline
@@ -23,7 +23,7 @@ It imports a Pixel bugreport ZIP, finds the correct report text automatically, e
 
 ## Install
 
-1. Open the **Releases** page.
+1. Open the [latest release](https://github.com/nuk3zz/pixel-battery-health/releases/latest).
 2. Download the latest APK file.
 3. Open the APK on your Pixel.
 4. If Android asks, allow installation from that source.
@@ -49,4 +49,6 @@ Bugreports can contain sensitive device logs. Only open bugreports you trust, an
 
 ## Supported Pixel Models
 
-The app includes Pixel design capacities for Pixel 4 and newer supported models, with additional model aliases where available. If the model cannot be detected, the app still shows parsed battery values but may not calculate a percentage.
+The app includes Pixel design capacities and device codenames from the original Pixel through the current supported range. Pixel 9 is explicitly recognized as `Pixel 9` or `tokay` and uses Google's 4,700 mAh typical capacity. If the model cannot be detected, the app still shows parsed battery values but may not calculate a percentage.
+
+The percentage uses the estimated real capacity reported by Android divided by the model's typical design capacity. Android's ASOC value is only used as a fallback when the capacity calculation is unavailable.
