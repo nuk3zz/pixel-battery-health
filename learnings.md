@@ -12,3 +12,11 @@
 - Release APKs are not installable without a signing configuration; the locally signed debug APK is appropriate for direct GitHub sideload testing.
 - v1.1.0 was installed and launched on the Android 16 Pixel 9 emulator. A synthetic `tokay` ZIP imported through the system document picker produced the expected 90% result from 4,230 / 4,700, along with the expected cycle, health, temperature, and voltage values.
 - The installed package resolved Android `ACTION_SEND` for `application/zip`, and APK manifest inspection confirmed there is no internet permission.
+
+## 2026-07-15 - Import Progress and Capacity Bounds
+
+- Learned capacity reported by Android can exceed a model's typical design rating even when model detection and parsing are correct.
+- The raw ratio can exceed 100% because learned capacity can be above a manufacturer's typical rating. Preserve the measured capacity but cap the user-facing health value at 100%.
+- One generic loading label hid whether delay came from backup, extraction, full-text scanning, or parsing. Every long stage now reports its identity and progress where measurable.
+- Timeout alone is insufficient around blocking reads unless loops check coroutine cancellation. Extraction, backup, scanning, and parsing now perform explicit cancellation checks.
+- Previous imports left extracted bugreport folders in cache. The importer now clears stale extraction folders and deletes the current folder in a `finally` block after parsing.

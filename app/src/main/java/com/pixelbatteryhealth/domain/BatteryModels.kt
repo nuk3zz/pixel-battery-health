@@ -16,7 +16,7 @@ data class BatteryReport(
     // Known model data is stable and avoids unrelated capacity values in verbose logs.
     val designCapacityMah: Int? = pixelModel?.designCapacityMah ?: parsedDesignCapacityMah
 
-    val healthPercent: Double? =
+    val healthPercent: Double? = (
         if (estimatedCapacityMah != null && designCapacityMah != null) {
             estimatedCapacityMah.toDouble() / designCapacityMah.toDouble() * 100.0
         } else if (batteryAsoc != null) {
@@ -24,6 +24,10 @@ data class BatteryReport(
         } else {
             null
         }
+    )?.coerceIn(0.0, 100.0)
+
+    val exceedsTypicalCapacity: Boolean =
+        estimatedCapacityMah != null && designCapacityMah != null && estimatedCapacityMah > designCapacityMah
 
     val summaryStatus: BatterySummaryStatus
         get() = when (val percent = healthPercent) {
@@ -104,7 +108,8 @@ sealed interface ImportError {
     data object InvalidZip : ImportError
     data object NoBugreportTextFound : ImportError
     data object MissingBatteryData : ImportError
-    data class ReadFailed(val message: String) : ImportError
+    data class TimedOut(val stage: ImportStage) : ImportError
+    data class ReadFailed(val stage: ImportStage, val message: String) : ImportError
 }
 
 sealed interface ImportResult {

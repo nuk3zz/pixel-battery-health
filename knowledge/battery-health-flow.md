@@ -4,6 +4,8 @@
 
 The app accepts a ZIP through the Storage Access Framework or Android share sheet. It extracts entries into an isolated cache directory, recursively ranks text files by battery markers and size, then streams the selected file through the parser.
 
+Import reports separate preparation, optional backup, extraction, text discovery, and parsing stages. Byte progress is shown when Android supplies the source size. Each long-running read checks cancellation, and the complete operation times out after three minutes with the active stage included in the error. Stale extraction directories are removed before import, and newly extracted data is deleted immediately after parsing.
+
 ## Pixel Model Detection
 
 Model evidence is ranked in this order:
@@ -25,7 +27,7 @@ For a known model with estimated capacity:
 
 `health percent = estimated capacity / model design capacity * 100`
 
-Android's battery ASOC value is used only when estimated capacity or design capacity is unavailable. Inputs outside realistic battery ranges are ignored rather than shown as credible results.
+Android's battery ASOC value is used only when estimated capacity or design capacity is unavailable. Inputs outside realistic battery ranges are ignored rather than shown as credible results. The user-facing percentage is capped at 100% because an individual battery's measured or learned capacity can be higher than the manufacturer's typical rating; the original measured mAh value remains visible.
 
 ## Privacy
 

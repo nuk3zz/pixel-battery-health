@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import kotlinx.coroutines.CancellationException
 
 class BugreportTextFinderTest {
     @get:Rule
@@ -64,5 +65,30 @@ class BugreportTextFinderTest {
         root.resolve("image.png").writeText("nope")
 
         assertNull(finder.findBestTextFile(root))
+    }
+
+    @Test
+    fun reportsScanProgressThroughCompletion() {
+        val root = temporaryFolder.newFolder("progress")
+        root.resolve("main.txt").writeText(
+            "plain\n".repeat(5_000) + "Estimated battery capacity: 4877 mAh",
+        )
+        val updates = mutableListOf<Float>()
+
+        finder.findBestTextFile(root, onProgress = updates::add)
+
+        assertTrue(updates.isNotEmpty())
+        assertEquals(1f, updates.last(), 0.001f)
+    }
+
+    @Test(expected = CancellationException::class)
+    fun doesNotSwallowCancellation() {
+        val root = temporaryFolder.newFolder("cancel")
+        root.resolve("main.txt").writeText("BUGREPORT")
+
+        finder.findBestTextFile(
+            root = root,
+            checkCancelled = { throw CancellationException("cancelled") },
+        )
     }
 }

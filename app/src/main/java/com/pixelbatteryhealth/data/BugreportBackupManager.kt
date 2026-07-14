@@ -7,15 +7,21 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import java.io.IOException
 
 class BugreportBackupManager(private val context: Context) {
 
-    fun backupToDownloads(uri: Uri) {
+    fun backupToDownloads(
+        uri: Uri,
+        onProgress: (Float?) -> Unit = {},
+        checkCancelled: () -> Unit = {},
+    ) {
         // MediaStore contribution to Downloads without permissions requires API 29+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
 
         val fileName = getFileName(uri) ?: "bugreport-${System.currentTimeMillis()}.zip"
-        
+
+        var itemUri: Uri? = null
         try {
             val contentResolver = context.contentResolver
             val contentValues = ContentValues().apply {
@@ -26,18 +32,43 @@ class BugreportBackupManager(private val context: Context) {
             }
 
             val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-            val itemUri = contentResolver.insert(collection, contentValues) ?: return
+            val createdUri = contentResolver.insert(collection, contentValues) ?: return
+            itemUri = createdUri
+            val sourceSize = getFileSize(uri)
+            var copiedBytes = 0L
+            var lastPercent = -1
 
-            contentResolver.openInputStream(uri)?.use { input ->
-                contentResolver.openOutputStream(itemUri)?.use { output ->
-                    input.copyTo(output)
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IOException("Could not open selected bugreport")
+            val outputStream = contentResolver.openOutputStream(createdUri)
+                ?: throw IOException("Could not create bugreport backup")
+            inputStream.use { input ->
+                outputStream.use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        checkCancelled()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        copiedBytes += count
+                        val fraction = sourceSize?.takeIf { it > 0L }
+                            ?.let { (copiedBytes.toDouble() / it).coerceIn(0.0, 1.0).toFloat() }
+                        val percent = fraction?.let { (it * 100).toInt() }
+                        if (percent == null || percent != lastPercent) {
+                            lastPercent = percent ?: lastPercent
+                            onProgress(fraction)
+                        }
+                    }
                 }
             }
 
             contentValues.clear()
             contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            contentResolver.update(itemUri, contentValues, null, null)
-        } catch (_: Exception) {
+            contentResolver.update(createdUri, contentValues, null, null)
+            onProgress(1f)
+        } catch (error: Exception) {
+            itemUri?.let { context.contentResolver.delete(it, null, null) }
+            if (error is kotlinx.coroutines.CancellationException) throw error
         }
     }
 
@@ -53,4 +84,12 @@ class BugreportBackupManager(private val context: Context) {
             null
         }
     }
+
+    private fun getFileSize(uri: Uri): Long? =
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) cursor.getLong(index) else null
+            }
+        }.getOrNull()
 }
